@@ -1,4 +1,4 @@
-#📚 Book Review and Summary App
+# 📚 Book Review and Summary App
 This project is a Book Review and Summary Application built with FastAPI for the backend, Streamlit for the frontend, and Ollama integration for generating book summaries using a local AI model. The application allows users to:
 
 Add, view, update, and delete books.
@@ -9,14 +9,14 @@ CRUD Operations for Books: Add new books, retrieve book lists, update book detai
 Book Reviews: Submit reviews and ratings for books.
 AI-Powered Summary: Generate book summaries using Ollama's llama3.1 model.
 Frontend: A user-friendly interface using Streamlit to interact with the backend.
-#🖥️ Technologies Used
+# 🖥️ Technologies Used
 FastAPI: Backend API framework.
 Streamlit: Frontend interface.
 SQLAlchemy: ORM for managing PostgreSQL database.
 PostgreSQL: Database for storing book and review data.
 Ollama: AI model for generating book summaries.
 Docker: Containerization for easy deployment.
-#🚀 Setup Instructions
+# 🚀 Setup Instructions
 Prerequisites
 Make sure you have the following installed:
 
