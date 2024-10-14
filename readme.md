@@ -80,7 +80,7 @@ Copy code
 docker run -d -p 8000:8000 fastapi-app
 Now, the FastAPI app should be accessible at http://localhost:8000.
 
-🧪 Testing the Application
+# 🧪 Testing the Application
 To run the unit tests, use pytest:
 
 bash
@@ -88,7 +88,7 @@ Copy code
 pytest test_app.py
 This will execute the test suite to ensure everything is working correctly.
 
-📝 API Endpoints
+# 📝 API Endpoints
 POST /books: Add a new book.
 GET /books: Retrieve a list of all books.
 GET /books/{book_id}: Retrieve a specific book by its ID.
@@ -96,17 +96,17 @@ PUT /books/{book_id}: Update a book's details.
 DELETE /books/{book_id}: Delete a book by its ID.
 POST /books/{book_id}/reviews: Add a review to a book.
 POST /generate-summary: Generate a summary of book content using Ollama's AI model.
-🎉 Features and Future Plans
+# 🎉 Features and Future Plans
 Full support for CRUD operations on books and reviews.
 Real-time summary generation using AI models.
 Future enhancements:
 Add user authentication and roles.
 Expand support for more complex review aggregation and analysis.
 Enhanced AI-based book recommendations.
-📄 License
+# 📄 License
 This project is licensed under the MIT License. See the LICENSE file for more details.
 
-💡 Additional Notes
+# 💡 Additional Notes
 Frontend: The user-facing interface built with Streamlit allows users to add, view, update, and delete books, and generate summaries.
 Backend: FastAPI serves as the backend API to handle database operations, book reviews, and interactions with the AI-powered summarization model.
 Feel free to customize the project for your own use case, and contributions are welcome!
