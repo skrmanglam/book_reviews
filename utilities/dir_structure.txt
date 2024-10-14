@@ -1,0 +1,15 @@
+project_root/
+│
+├── backend/
+│   ├── __init__.py             # Empty init file
+│   ├── database.py             # Database setup and models
+│   ├── crud.py                 # CRUD operations for books and reviews
+│   ├── ollama_integration.py   # Integration with Ollama for summaries
+│   └── schemas.py              # Pydantic models (schemas)
+│
+├── main.py                     # FastAPI app
+├── streamlit_app.py            # Streamlit app for frontend
+├── Dockerfile                  # Docker configuration
+├── requirements.txt            # Python dependencies
+├── test_app.py                 # Unit tests for FastAPI
+└── .gitignore                  # Git ignore file
