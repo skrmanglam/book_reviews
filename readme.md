@@ -4,11 +4,12 @@ This project is a Book Review and Summary Application built with FastAPI for the
 Add, view, update, and delete books.
 Submit and view reviews for each book.
 Generate summaries for book content using AI.
-#🛠️ Features
+# 🛠️ Features
 CRUD Operations for Books: Add new books, retrieve book lists, update book details, and delete books.
 Book Reviews: Submit reviews and ratings for books.
 AI-Powered Summary: Generate book summaries using Ollama's llama3.1 model.
 Frontend: A user-friendly interface using Streamlit to interact with the backend.
+
 # 🖥️ Technologies Used
 FastAPI: Backend API framework.
 Streamlit: Frontend interface.
@@ -16,6 +17,7 @@ SQLAlchemy: ORM for managing PostgreSQL database.
 PostgreSQL: Database for storing book and review data.
 Ollama: AI model for generating book summaries.
 Docker: Containerization for easy deployment.
+
 # 🚀 Setup Instructions
 Prerequisites
 Make sure you have the following installed:
@@ -34,11 +36,11 @@ Create a virtual environment and install the required Python packages:
 
 bash
 Copy code
-# Create virtual environment
+#Create virtual environment
 python -m venv venv
 source venv/bin/activate  # On Windows use `venv\Scripts\activate`
 
-# Install dependencies
+#Install dependencies
 pip install -r requirements.txt
 3. Set Up PostgreSQL Database
 Ensure PostgreSQL is installed and running.

@@ -98,14 +98,23 @@ with tab4:
                 else:
                     st.error(f"Error deleting book: {response.status_code}")
 
-# Separate section for generating summaries
-st.header("Generate Book Summary")
-book_content = st.text_area("Enter book content to summarize")
+# Section for generating summaries based on title and author
+st.header("Generate Book Summary Automatically")
+book_title = st.text_input("Enter the book title for summary")
+book_author = st.text_input("Enter the author for summary")
 
 if st.button("Generate Summary"):
-    response = requests.post(f"{BASE_URL}/generate-summary", json={"book_content": book_content})
-    if response.status_code == 200:
-        summary = response.json().get("summary", "No summary available")
-        st.write(f"Summary: {summary}")
+    if not book_title or not book_author:
+        st.error("Please provide both the title and the author.")
     else:
-        st.error(f"Error generating summary: {response.status_code}")
+        response = requests.post(f"{BASE_URL}/generate-summary", json={
+            "title": book_title,
+            "author": book_author
+        })
+        if response.status_code == 200:
+            # Replace newlines with markdown newlines
+            summary = response.json().get("summary", "No summary available").replace("\n", "\n\n")
+            st.markdown(f"**Summary**: \n\n{summary}")
+
+        else:
+            st.error(f"Error generating summary: {response.status_code}")
