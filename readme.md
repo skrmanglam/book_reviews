@@ -4,6 +4,7 @@ This project is a Book Review and Summary Application built with FastAPI for the
 Add, view, update, and delete books.
 Submit and view reviews for each book.
 Generate summaries for book content using AI.
+
 # 🛠️ Features
 CRUD Operations for Books: Add new books, retrieve book lists, update book details, and delete books.
 Book Reviews: Submit reviews and ratings for books.
