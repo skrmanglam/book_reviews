@@ -19,3 +19,7 @@ class ReviewCreate(BaseModel):
 
 class ReviewRead(ReviewCreate):
     id: int
+
+# Pydantic schema for the book content
+class BookContent(BaseModel):
+    book_content: str

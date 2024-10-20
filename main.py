@@ -64,7 +64,7 @@ class BookSummaryRequest(BaseModel):
 def fetch_book_summary(title: str, author: str):
     google_books_api = f"https://www.googleapis.com/books/v1/volumes?q=intitle:{title}+inauthor:{author}"
     response = requests.get(google_books_api)
-    print(response)
+    print('response from book_api', response)
 
     if response.status_code == 200:
         data = response.json()
