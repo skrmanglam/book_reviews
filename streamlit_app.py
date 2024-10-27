@@ -1,120 +1,72 @@
 import streamlit as st
 import requests
+import asyncio
+from sqlalchemy.orm import sessionmaker
+from backend.database import engine, Book, SessionLocal
+from backend.ollama_integration import generate_summary
 
-BASE_URL = "http://localhost:8000"
+# Google Books API URL
+GOOGLE_BOOKS_API_URL = "https://www.googleapis.com/books/v1/volumes"
 
-st.title("Book Review App")
-
-# Helper function to fetch books
-def fetch_books():
-    response = requests.get(f"{BASE_URL}/books")
+# Function to fetch summary from Google Books API
+def fetch_summary_from_google_books(title: str, author: str):
+    response = requests.get(f"{GOOGLE_BOOKS_API_URL}?q=intitle:{title}+inauthor:{author}")
     if response.status_code == 200:
-        return response.json()
-    else:
-        st.error(f"Error fetching books: {response.status_code}")
-        return []
+        data = response.json()
+        if "items" in data:
+            volume_info = data["items"][0]["volumeInfo"]
+            return volume_info.get("description", "No description available.")
+    return None
 
-# Tabbed interface for different operations
-tab1, tab2, tab3, tab4 = st.tabs(["Add Book", "View Books", "Update Book", "Delete Book"])
+# Streamlit UI for adding a book
+st.title("Add a New Book")
 
-# Tab 1: Add a new book
-with tab1:
-    st.header("Add a new book")
-    book_title = st.text_input("Title")
-    book_author = st.text_input("Author")
-    book_genre = st.text_input("Genre")
-    year_published = st.number_input("Year Published", min_value=1000, max_value=9999, value=2022)
-    book_summary = st.text_area("Summary")
+# Book addition form fields
+title = st.text_input("Book Title")
+author = st.text_input("Author Name")
+genre = st.selectbox("Genre", ["Fiction", "Non-fiction", "Fantasy", "Mystery", "Biography", "Science Fiction"])
+year_published = st.number_input("Year Published", min_value=0, max_value=2023, step=1)
+summary = ""
 
-    if st.button("Submit"):
-        response = requests.post(f"{BASE_URL}/books", json={
-            "title": book_title,
-            "author": book_author,
-            "genre": book_genre,
-            "year_published": year_published,
-            "summary": book_summary
-        })
-        if response.status_code == 200:
-            st.success(f"Book '{book_title}' added successfully!")
+# Generate summary when button clicked
+if st.button("Generate Summary") and title and author:
+    st.write("Fetching summary from Google Books API...")
+    google_summary = fetch_summary_from_google_books(title, author)
+
+    if google_summary:
+        # Check if the summary is lengthy; if so, summarize it using Llama
+        if len(google_summary) > 300:
+            st.write("Summary is long; summarizing with Llama API...")
+            summary = asyncio.run(generate_summary(google_summary))
         else:
-            st.error(f"Error: {response.status_code}")
-
-# Tab 2: View all books
-with tab2:
-    st.header("View Books")
-    books = fetch_books()
-    if books:
-        for book in books:
-            st.subheader(f"{book['title']} by {book['author']}")
-            st.write(f"Genre: {book['genre']}, Year: {book['year_published']}")
-            st.write(f"Summary: {book['summary']}")
-
-# Tab 3: Update an existing book
-with tab3:
-    st.header("Update a Book")
-    books = fetch_books()
-    book_titles = [book["title"] for book in books]
-
-    if books:
-        selected_book = st.selectbox("Select a book to update", book_titles)
-        if selected_book:
-            book_to_update = next(book for book in books if book["title"] == selected_book)
-            book_id = book_to_update["id"]
-            updated_title = st.text_input("New Title", book_to_update["title"])
-            updated_author = st.text_input("New Author", book_to_update["author"])
-            updated_genre = st.text_input("New Genre", book_to_update["genre"])
-            updated_year = st.number_input("New Year Published", min_value=1000, max_value=9999, value=book_to_update["year_published"])
-            updated_summary = st.text_area("New Summary", book_to_update["summary"])
-
-            if st.button("Update Book"):
-                response = requests.put(f"{BASE_URL}/books/{book_id}", json={
-                    "title": updated_title,
-                    "author": updated_author,
-                    "genre": updated_genre,
-                    "year_published": updated_year,
-                    "summary": updated_summary
-                })
-                if response.status_code == 200:
-                    st.success(f"Book '{updated_title}' updated successfully!")
-                else:
-                    st.error(f"Error updating book: {response.status_code}")
-
-# Tab 4: Delete a book
-with tab4:
-    st.header("Delete a Book")
-    books = fetch_books()
-    book_titles = [book["title"] for book in books]
-
-    if books:
-        selected_book = st.selectbox("Select a book to delete", book_titles)
-        if selected_book:
-            book_to_delete = next(book for book in books if book["title"] == selected_book)
-            book_id = book_to_delete["id"]
-
-            if st.button(f"Delete {selected_book}"):
-                response = requests.delete(f"{BASE_URL}/books/{book_id}")
-                if response.status_code == 200:
-                    st.success(f"Book '{selected_book}' deleted successfully!")
-                else:
-                    st.error(f"Error deleting book: {response.status_code}")
-
-# Section for generating summaries based on title and author
-st.header("Generate Book Summary Automatically")
-book_title = st.text_input("Enter the book title for summary")
-book_author = st.text_input("Enter the author for summary")
-
-if st.button("Generate Summary"):
-    if not book_title or not book_author:
-        st.error("Please provide both the title and the author.")
+            summary = google_summary
+        st.success("Summary generated!")
+        st.text_area("Generated Summary", summary, height=150)
     else:
-        response = requests.post(f"{BASE_URL}/generate-summary", json={
-            "title": book_title,
-            "author": book_author
-        })
-        if response.status_code == 200:
-            # Replace newlines with markdown newlines
-            summary = response.json().get("summary", "No summary available").replace("\n", "\n\n")
-            st.markdown(f"**Summary**: \n\n{summary}")
+        st.warning("No summary found in Google Books API.")
 
+# Book submission button
+if st.button("Add Book") and title and author and summary:
+    # Each time, open a new session to avoid shared session issues
+    session = SessionLocal()
+    try:
+        new_book = Book(title=title, author=author, genre=genre, year_published=year_published, summary=summary)
+        session.add(new_book)
+        session.commit()
+        st.success(f"Book '{title}' by {author} added successfully!")
+        print("Book added successfully!")  # Debugging print statement
+
+        # Check database directly after commit
+        result = session.query(Book).filter_by(title=title, author=author).first()
+        if result:
+            print("Book found in database:", result.title, result.author)
         else:
-            st.error(f"Error generating summary: {response.status_code}")
+            print("Book not found in database after commit.")
+
+    except Exception as e:
+        session.rollback()  # Rollback in case of an error
+        st.error("Failed to add book to the database.")
+        print(f"Error: {e}")  # Print the error to the console for debugging
+
+    finally:
+        session.close()  # Close the session after each operation

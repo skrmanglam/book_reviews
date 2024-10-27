@@ -12,4 +12,7 @@ project_root/
 ├── Dockerfile                  # Docker configuration
 ├── requirements.txt            # Python dependencies
 ├── test_app.py                 # Unit tests for FastAPI
+├── test_db_connections.py      # for tsting db connections
+├── gradio_app.py               # gradio app for frontend
 └── .gitignore                  # Git ignore file
+

@@ -24,8 +24,13 @@ async def create_review(db: AsyncSession, book_id: int, review):
     await db.refresh(new_review)
     return new_review
 
-async def delete_book(db: AsyncSession, book_id: int):
-    book = await get_book_by_id(db, book_id)
+async def delete_book(db: AsyncSession, book_id: int) -> bool:
+    """Delete a single book by its ID."""
+    # Fetch the book by ID
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+
+    # If the book exists, delete it
     if book:
         await db.delete(book)
         await db.commit()
