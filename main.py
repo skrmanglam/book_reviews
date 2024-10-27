@@ -175,3 +175,4 @@ async def view_book(book_id: int, db: AsyncSession):
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
     return book
+

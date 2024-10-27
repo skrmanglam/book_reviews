@@ -1,6 +1,9 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from backend.database import Book, Review
+from sqlalchemy.future import select
+from sqlalchemy import or_
+
 
 async def get_books(db: AsyncSession):
     result = await db.execute(select(Book))
@@ -36,3 +39,16 @@ async def delete_book(db: AsyncSession, book_id: int) -> bool:
         await db.commit()
         return True
     return False
+
+
+async def search_by_author(db: AsyncSession, author_name: str):
+    result = await db.execute(select(Book).where(Book.author.like(f"%{author_name}%")))
+    books =  result.scalars().all()
+    # Format books into a list of dictionaries
+    return [{"title": book.title, "author": book.author, "summary": book.summary} for book in books]
+
+async def search_by_book_name(db: AsyncSession, book_name: str):
+    result = await db.execute(select(Book).where(Book.title.like(f"%{book_name}%")))
+    books = result.scalars().all()
+    # Format books into a list of dictionaries
+    return [{"title": book.title, "author": book.author, "summary": book.summary} for book in books]

@@ -3,13 +3,30 @@ import requests
 import asyncio
 from backend.ollama_integration import generate_summary
 from main import add_book, view_book, fetch_book_summary, summarize_with_ollama  # Import the combined function
-
+from backend.crud import search_by_author, search_by_book_name
+from backend.ollama_integration import search_by_summary
+from backend.database import SessionLocal
 from backend.database import SessionLocal, Book
 from sqlalchemy.exc import SQLAlchemyError
 
 import asyncio
 from backend.database import Book
 from backend.ollama_integration import generate_summary
+from backend.ollama_integration import generate_summary, index_books, search_by_summary
+import nest_asyncio
+
+# Apply nest_asyncio to allow nested async loops
+nest_asyncio.apply()
+
+
+# Ensure index_books runs at startup
+# async def initialize_app():
+#     await index_books()
+
+# # Run initialization before launching the app
+# asyncio.run(initialize_app())
+
+
 
 # Assuming FastAPI is running locally on port 8000
 BASE_URL = "http://127.0.0.1:8000"
@@ -96,89 +113,220 @@ def delete_review(review_id):
         return f"Failed to delete review: {response.text}"
 
 
-def generate_summary(title, author):
-    # Call the combined function to fetch and optionally summarize the book content
-    summary = fetch_and_summarize_book(title, author)
-    return summary
+# def generate_summary(title, author):
+#     # Call the combined function to fetch and optionally summarize the book content
+#     summary = fetch_and_summarize_book(title, author)
+#     return summary
 
 # UI button interactions
+# def add_book_ui(title, author, genre, year_published, summary):
+#     # Ensure genre is a string before passing
+#     genre_str = str(genre) if genre else ""
+#     return add_book(title, author, genre, year_published, summary)
+
+# def view_book_ui(book_id):
+#     result = view_book(book_id)
+#     if "Book not found" in result:
+#         return "Book ID not found. Please check and try again."
+#     return result
+
+# ---- Async Functions for CRUD Operations ----
+
+import asyncio
+
+# def sync_search_by_author(author_name: str):
+#     try:
+#         # Try to get the running event loop
+#         loop = asyncio.get_running_loop()
+#         # Use `ensure_future` for safe scheduling in the existing loop
+#         future = asyncio.ensure_future(async_search_by_author(author_name))
+#         return loop.run_until_complete(future)
+#     except RuntimeError:
+#         # If no loop is running, create a new one
+#         return asyncio.run(async_search_by_author(author_name))
+#
+# def sync_search_by_book_name(book_name: str):
+#     try:
+#         loop = asyncio.get_running_loop()
+#         future = asyncio.ensure_future(async_search_by_book_name(book_name))
+#         return loop.run_until_complete(future)
+#     except RuntimeError:
+#         return asyncio.run(async_search_by_book_name(book_name))
+#
+# def sync_search_by_summary(summary_text: str):
+#     try:
+#         loop = asyncio.get_running_loop()
+#         future = asyncio.ensure_future(async_search_by_summary(summary_text))
+#         return loop.run_until_complete(future)
+#     except RuntimeError:
+#         return asyncio.run(async_search_by_summary(summary_text))
+
+
+
+# ---- Async Functions for CRUD Operations ----
+
+async def async_search_by_author(author_name: str):
+    async with SessionLocal() as db:
+        books = await search_by_author(db, author_name)
+    return "\n\n".join([f"Title: {book['title']}, Author: {book['author']}, Summary: {book['summary']}" for book in books])
+
+async def async_search_by_book_name(book_name: str):
+    async with SessionLocal() as db:
+        books = await search_by_book_name(db, book_name)
+    return "\n\n".join([f"Title: {book['title']}, Author: {book['author']}, Summary: {book['summary']}" for book in books])
+
+async def async_search_by_summary(summary_text: str):
+    return await search_by_summary(summary_text)
+
+
+# ---- Gradio UI Functions ----
+
 def add_book_ui(title, author, genre, year_published, summary):
-    # Ensure genre is a string before passing
-    genre_str = str(genre) if genre else ""
-    return add_book(title, author, genre, year_published, summary)
+    response = requests.post(f"{BASE_URL}/books", json={
+        "title": title,
+        "author": author,
+        "genre": genre,
+        "year_published": int(year_published),
+        "summary": summary
+    })
+    if response.status_code == 200:
+        return f"Book '{title}' added successfully!"
+    else:
+        return f"Failed to add book: {response.text}"
 
 def view_book_ui(book_id):
-    result = view_book(book_id)
-    if "Book not found" in result:
-        return "Book ID not found. Please check and try again."
-    return result
-
-# Gradio UI
-with gr.Blocks() as app:
-    gr.Markdown("# Book & Review Management")
-
-    with gr.Tabs():
-        # Book Tab
-        with gr.Tab("Books"):
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("### Add Book")
-                    title = gr.Textbox(label="Title")
-                    author = gr.Textbox(label="Author")
-                    genre = gr.Dropdown(["Fiction", "Non-fiction", "Science", "Fantasy", "Mystery", "Biography", "Unkown"],
-                                        label="Genre", value = "Unkown")
-                    year_published = gr.Number(label="Year Published", value=2023)
-                    summary = gr.Textbox(label="Summary", lines=5)
-
-                    # Generate Summary Button
-                    generate_button = gr.Button("Generate Summary")
-                    generate_button.click(generate_summary_ui, [title, author], summary)
-
-                    # Add Book Button
-                    add_book_button = gr.Button("Add Book")
-                    add_book_result = gr.Textbox(label="Result")
-                    add_book_button.click(add_book_ui, [title, author, genre, year_published, summary], add_book_result)
-
-                with gr.Column():
-                    gr.Markdown("### View / Update / Delete Book")
-                    book_id = gr.Number(label="Enter Book ID")
-                    view_book_button = gr.Button("View Book")
-                    book_info = gr.Textbox(label="Book Information", lines=10)
-                    view_book_button.click(view_book_ui, [book_id], book_info)
-
-                    update_book_button = gr.Button("Update Book")
-                    delete_book_button = gr.Button("Delete Book")
-                    update_result = gr.Textbox(label="Result")
-                    update_book_button.click(update_book, [book_id, title, author, genre, year_published, summary],
-                                             update_result)
-                    delete_book_button.click(delete_book, [book_id], update_result)
-
-            # Review Tab
-        with gr.Tab("Reviews"):
-            with gr.Row():
-                with gr.Column():
-                        gr.Markdown("### Add Review")
-                        review_book_id = gr.Number(label="Book ID")
-                        user_id = gr.Number(label="User ID")
-                        review_text = gr.Textbox(label="Review Text", lines=4)
-                        rating = gr.Slider(1, 5, label="Rating", step=1)
-
-                        add_review_button = gr.Button("Add Review")
-                        add_review_result = gr.Textbox(label="Result")
-                        add_review_button.click(add_review, [review_book_id, user_id, review_text, rating],
-                                                add_review_result)
-
-                with gr.Column():
-                        gr.Markdown("### View / Delete Reviews")
-                        view_review_book_id = gr.Number(label="Book ID")
-                        view_reviews_button = gr.Button("View Reviews")
-                        review_info = gr.Textbox(label="Review Information", lines=10)
-                        view_reviews_button.click(view_reviews, [view_review_book_id], review_info)
-
-                        delete_review_id = gr.Number(label="Review ID")
-                        delete_review_button = gr.Button("Delete Review")
-                        delete_review_result = gr.Textbox(label="Result")
-                        delete_review_button.click(delete_review, [delete_review_id], delete_review_result)
+    response = requests.get(f"{BASE_URL}/books/{book_id}")
+    if response.status_code == 200:
+        book = response.json()
+        return f"Title: {book['title']}\nAuthor: {book['author']}\nGenre: {book['genre']}\nYear Published: {book['year_published']}\nSummary: {book['summary']}"
+    else:
+        return "Book not found."
 
 
-app.launch()
+# Launch Gradio asynchronously
+async def run_gradio_app():
+    await index_books()  # Ensure ChromaDB is populated
+
+    # Gradio UI
+    with gr.Blocks() as app:
+        gr.Markdown("# Book & Review Management")
+
+        with gr.Tabs():
+            # Book Tab
+            with gr.Tab("Books"):
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("### Add Book")
+                        title = gr.Textbox(label="Title")
+                        author = gr.Textbox(label="Author")
+                        genre = gr.Dropdown(["Fiction", "Non-fiction", "Science", "Fantasy", "Mystery", "Biography", "Unkown"],
+                                            label="Genre", value = "Unkown")
+                        year_published = gr.Number(label="Year Published", value=2023)
+                        summary = gr.Textbox(label="Summary", lines=5)
+
+                        # Generate Summary Button
+                        generate_button = gr.Button("Generate Summary")
+                        generate_button.click(generate_summary_ui, [title, author], summary)
+
+                        # Add Book Button
+                        add_book_button = gr.Button("Add Book")
+                        add_book_result = gr.Textbox(label="Result")
+                        add_book_button.click(add_book_ui, [title, author, genre, year_published, summary], add_book_result)
+
+                    with gr.Column():
+                        gr.Markdown("### View / Update / Delete Book")
+                        book_id = gr.Number(label="Enter Book ID")
+                        view_book_button = gr.Button("View Book")
+                        book_info = gr.Textbox(label="Book Information", lines=10)
+                        view_book_button.click(view_book_ui, [book_id], book_info)
+
+                        update_book_button = gr.Button("Update Book")
+                        delete_book_button = gr.Button("Delete Book")
+                        update_result = gr.Textbox(label="Result")
+                        update_book_button.click(update_book, [book_id, title, author, genre, year_published, summary],
+                                                 update_result)
+                        delete_book_button.click(delete_book, [book_id], update_result)
+
+                # Review Tab
+            with gr.Tab("Reviews"):
+                with gr.Row():
+                    with gr.Column():
+                            gr.Markdown("### Add Review")
+                            review_book_id = gr.Number(label="Book ID")
+                            user_id = gr.Number(label="User ID")
+                            review_text = gr.Textbox(label="Review Text", lines=4)
+                            rating = gr.Slider(1, 5, label="Rating", step=1)
+
+                            add_review_button = gr.Button("Add Review")
+                            add_review_result = gr.Textbox(label="Result")
+                            add_review_button.click(add_review, [review_book_id, user_id, review_text, rating],
+                                                    add_review_result)
+
+                    with gr.Column():
+                            gr.Markdown("### View / Delete Reviews")
+                            view_review_book_id = gr.Number(label="Book ID")
+                            view_reviews_button = gr.Button("View Reviews")
+                            review_info = gr.Textbox(label="Review Information", lines=10)
+                            view_reviews_button.click(view_reviews, [view_review_book_id], review_info)
+
+                            delete_review_id = gr.Number(label="Review ID")
+                            delete_review_button = gr.Button("Delete Review")
+                            delete_review_result = gr.Textbox(label="Result")
+                            delete_review_button.click(delete_review, [delete_review_id], delete_review_result)
+
+                    # New "Search" Tab
+            with gr.Tab("Search"):
+                with gr.Row():
+                    # Search by Book ID
+                    with gr.Column():
+                        gr.Markdown("### Search by Book ID")
+                        book_id_search = gr.Number(label="Book ID")
+                        search_by_id_button = gr.Button("Search by ID", size="small")
+                        book_info_by_id = gr.Textbox(label="Book Information", lines=5)
+                        search_by_id_button.click(view_book_ui, [book_id_search], book_info_by_id)
+
+                    # Search by ISBN
+                    with gr.Column():
+                        gr.Markdown("### Search by ISBN")
+                        isbn_search = gr.Textbox(label="ISBN")
+                        search_by_isbn_button = gr.Button("Search by ISBN", size="small")
+                        isbn_result = gr.Textbox(label="Book Information", lines=5)
+                        search_by_isbn_button.click(lambda x: "Feature not yet implemented", [isbn_search],
+                                                    isbn_result)
+
+                    # Search by Author Name
+                    with gr.Column():
+                        gr.Markdown("### Search by Author Name")
+                        author_search = gr.Textbox(label="Author Name")
+                        search_by_author_button = gr.Button("Search by Author", size="small")
+                        author_result = gr.Textbox(label="Books Found", lines=5)
+                        search_by_author_button.click(async_search_by_author, [author_search], author_result)
+
+                with gr.Row():
+                    # Search by Book Name
+                    with gr.Column():
+                        gr.Markdown("### Search by Book Name")
+                        book_name_search = gr.Textbox(label="Book Name")
+                        search_by_name_button = gr.Button("Search by Book Name", size="small")
+                        book_name_result = gr.Textbox(label="Books Found", lines=5)
+                        search_by_name_button.click(async_search_by_book_name, [book_name_search], book_name_result)
+
+
+
+
+                    # Search by Summary (Embedding Search)
+                    with gr.Column():
+                        gr.Markdown("### Search by Summary")
+                        summary_search = gr.Textbox(label="Summary Keywords")
+                        search_by_summary_button = gr.Button("Search by Summary", size="small")
+                        summary_search_result = gr.Textbox(label="Search Results", lines=5)
+                        search_by_summary_button.click(async_search_by_summary, [summary_search], summary_search_result)
+
+
+
+
+    app.launch()
+
+# Main entry point
+if __name__ == "__main__":
+    asyncio.run(run_gradio_app())
