@@ -5,3 +5,4 @@ asyncpg
 ollama
 streamlit
 requests
+gradio

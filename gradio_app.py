@@ -14,6 +14,21 @@ from backend.database import Book
 from backend.ollama_integration import generate_summary
 from backend.ollama_integration import generate_summary, index_books, search_by_summary
 import nest_asyncio
+from contextlib import asynccontextmanager
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.database import Book, SessionLocal
+from typing import List, Dict, Any
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from backend.RAG import BookRAG
+import uuid
+
+# Generate a unique session ID
+session_id = str(uuid.uuid4())
+
+rag_instance = BookRAG()
 
 # Apply nest_asyncio to allow nested async loops
 nest_asyncio.apply()
@@ -26,7 +41,154 @@ nest_asyncio.apply()
 # # Run initialization before launching the app
 # asyncio.run(initialize_app())
 
+# Replace with your database URL, ensuring it uses asyncpg for async PostgreSQL support
+DATABASE_URL = "postgresql+asyncpg://postgres:1234@localhost/book_review"
 
+# Create a session factory for concurrent operations
+async_engine = create_async_engine(
+    "postgresql+asyncpg://postgres:1234@localhost/book_review",
+    echo=True,
+    pool_size=20,
+    max_overflow=0
+)
+
+AsyncSessionFactory = sessionmaker(
+    async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
+
+@asynccontextmanager
+async def get_session():
+    """Create a new session for each operation"""
+    async with AsyncSessionFactory() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+async def run_db_query(query_func, *args):
+    """
+    Helper function to properly manage database sessions for queries
+    """
+    async with SessionLocal() as session:
+        async with session.begin():
+            try:
+                result = await query_func(session, *args)
+                return result
+            except Exception as e:
+                await session.rollback()
+                raise e
+
+
+async def search_books_by_author(author_name: str) -> List[Dict[str, Any]]:
+    """
+    Search for books by author name with proper concurrent handling
+    """
+    async with get_session() as session:
+        try:
+            query = select(Book).where(Book.author.ilike(f"%{author_name}%"))
+            result = await session.execute(query)
+            books = result.scalars().all()
+
+            if not books:
+                return [
+                    {"title": "No books found", "author": "N/A", "summary": "No matching books found for this author"}]
+
+            return [
+                {
+                    "title": book.title,
+                    "author": book.author,
+                    "summary": book.summary if book.summary else "No summary available"
+                }
+                for book in books
+            ]
+        except Exception as e:
+            print(f"Database error in search_by_author: {str(e)}")
+            return [{"title": "Error", "author": "N/A", "summary": f"Search error: {str(e)}"}]
+
+
+async def search_books_by_name(book_name: str) -> List[Dict[str, Any]]:
+    """
+    Search for books by book name with proper concurrent handling
+    """
+    async with get_session() as session:
+        try:
+            query = select(Book).where(Book.title.ilike(f"%{book_name}%"))
+            result = await session.execute(query)
+            books = result.scalars().all()
+
+            if not books:
+                return [
+                    {"title": "No books found", "author": "N/A", "summary": "No matching books found with this title"}]
+
+            return [
+                {
+                    "title": book.title,
+                    "author": book.author,
+                    "summary": book.summary if book.summary else "No summary available"
+                }
+                for book in books
+            ]
+        except Exception as e:
+            print(f"Database error in search_by_book_name: {str(e)}")
+            return [{"title": "Error", "author": "N/A", "summary": f"Search error: {str(e)}"}]
+
+
+def create_sync_search_handler(search_func):
+    """
+    Create a synchronous handler for async search functions with semaphore control
+    """
+    semaphore = asyncio.Semaphore(5)  # Limit concurrent operations
+
+    def sync_wrapper(search_term: str) -> str:
+        async def wrapped():
+            async with semaphore:  # Control concurrent access
+                try:
+                    results = await search_func(search_term)
+                    return "\n\n".join([
+                        f"Title: {book['title']}\nAuthor: {book['author']}\nSummary: {book['summary']}"
+                        for book in results
+                    ])
+                except Exception as e:
+                    return f"Search error: {str(e)}"
+
+        # Create a new event loop for each search operation
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(wrapped())
+        finally:
+            loop.close()
+
+    return sync_wrapper
+
+
+def create_sync_handler(async_func):
+    """
+    Create a synchronous handler for async database functions
+    """
+    def sync_wrapper(*args, **kwargs):
+        async def wrapped():
+            try:
+                result = await run_db_query(async_func, *args)
+                if isinstance(result, list):
+                    return "\n\n".join([
+                        f"Title: {book.title}, Author: {book.author}, Summary: {book.summary}"
+                        for book in result
+                    ])
+                return str(result)
+            except Exception as e:
+                return f"Error: {str(e)}"
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(wrapped())
+        finally:
+            loop.close()
+
+    return sync_wrapper
 
 # Assuming FastAPI is running locally on port 8000
 BASE_URL = "http://127.0.0.1:8000"
@@ -178,6 +340,37 @@ async def async_search_by_book_name(book_name: str):
 async def async_search_by_summary(summary_text: str):
     return await search_by_summary(summary_text)
 
+# Modify the search functions to properly handle async operations
+# def search_by_author_sync(author_name: str):
+#     async def async_search():
+#         async with SessionLocal() as db:
+#             books = await search_by_author(db, author_name)
+#             return "\n\n".join([
+#                 f"Title: {book['title']}, Author: {book['author']}, Summary: {book['summary']}"
+#                 for book in books
+#             ])
+#     return run_async(async_search())
+#
+# def search_by_book_name_sync(book_name: str):
+#     async def async_search():
+#         async with SessionLocal() as db:
+#             books = await search_by_book_name(db, book_name)
+#             return "\n\n".join([
+#                 f"Title: {book['title']}, Author: {book['author']}, Summary: {book['summary']}"
+#                 for book in books
+#             ])
+#     return run_async(async_search())
+
+# def search_by_summary_sync(summary_text: str):
+#     async def async_search():
+#         results = await search_by_summary(summary_text)
+#         return results
+#     return run_async(async_search())
+
+# # Create synchronized search functions
+# search_by_author_sync = create_sync_search_handler(search_books_by_author)
+# search_by_book_name_sync = create_sync_search_handler(search_books_by_name)
+
 
 # ---- Gradio UI Functions ----
 
@@ -203,15 +396,73 @@ def view_book_ui(book_id):
         return "Book not found."
 
 
+# Create synchronized search functions
+search_by_author_sync = create_sync_search_handler(search_books_by_author)
+search_by_book_name_sync = create_sync_search_handler(search_books_by_name)
+
+# Special handler for summary search since it doesn't use the database session
+def search_by_summary_sync(summary_text: str):
+    async def handler():
+        try:
+            return await search_by_summary(summary_text)
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(handler())
+    finally:
+        loop.close()
+
+
+# Define async function for chatbot interaction
+async def send_message_to_chatbot(message, history, session_id=None):
+    # Generate a session ID if one is not provided
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
+    # Call the chat function and get response
+    response = await rag_instance.chat(message, session_id)
+    if response:
+        history.append((message, response))
+        return history, session_id
+    else:
+        history.append((message, "Failed to fetch response from chatbot"))
+        return history, session_id
+
+
+# Define a sync wrapper for sending a message to the chatbot
+def wrap_chat_function(message, history, session_id=None):
+    return asyncio.run(send_message_to_chatbot(message, history, session_id))
+
 # Launch Gradio asynchronously
-async def run_gradio_app():
-    await index_books()  # Ensure ChromaDB is populated
+# Gradio app setup
+def create_gradio_app():
+
+    #await index_books()  # Ensure ChromaDB is populated
 
     # Gradio UI
     with gr.Blocks() as app:
         gr.Markdown("# Book & Review Management")
 
+        # Chat Tab
         with gr.Tabs():
+            with gr.Tab("Chatbot"):
+                with gr.Column():
+                    gr.Markdown("### Chat with Our Book Bot")
+                    chatbot = gr.Chatbot()
+                    input_message = gr.Textbox(label="Your Message")
+                    session_id = gr.State()
+                    send_button = gr.Button("Send")
+
+                    # Bind the button click to the chatbot function with session management
+                    send_button.click(
+                        wrap_chat_function,
+                        inputs=[input_message, chatbot, session_id],
+                        outputs=[chatbot, session_id]
+                    )
+
             # Book Tab
             with gr.Tab("Books"):
                 with gr.Row():
@@ -285,6 +536,7 @@ async def run_gradio_app():
                         book_info_by_id = gr.Textbox(label="Book Information", lines=5)
                         search_by_id_button.click(view_book_ui, [book_id_search], book_info_by_id)
 
+
                     # Search by ISBN
                     with gr.Column():
                         gr.Markdown("### Search by ISBN")
@@ -297,20 +549,37 @@ async def run_gradio_app():
                     # Search by Author Name
                     with gr.Column():
                         gr.Markdown("### Search by Author Name")
-                        author_search = gr.Textbox(label="Author Name")
-                        search_by_author_button = gr.Button("Search by Author", size="small")
-                        author_result = gr.Textbox(label="Books Found", lines=5)
-                        search_by_author_button.click(async_search_by_author, [author_search], author_result)
+                        author_search = gr.Textbox(
+                            label="Author Name",
+                            placeholder="Enter author name..."
+                        )
+                        search_by_author_button = gr.Button("Search by Author", variant= "primary", size="small")
+                        author_result = gr.Textbox(label="Books Found", lines=5, show_label=True)
+                        #search_by_author_button.click(async_search_by_author, [author_search], author_result)
+                        # Use the sync wrapper
+                        search_by_author_button.click(
+                            fn = search_by_author_sync,
+                            inputs=[author_search],
+                            outputs=author_result
+                        )
 
                 with gr.Row():
                     # Search by Book Name
                     with gr.Column():
                         gr.Markdown("### Search by Book Name")
-                        book_name_search = gr.Textbox(label="Book Name")
-                        search_by_name_button = gr.Button("Search by Book Name", size="small")
-                        book_name_result = gr.Textbox(label="Books Found", lines=5)
-                        search_by_name_button.click(async_search_by_book_name, [book_name_search], book_name_result)
-
+                        book_name_search = gr.Textbox(
+                            label="Book Name",
+                            placeholder="Enter book title..."
+                        )
+                        search_by_name_button = gr.Button("Search by Book Name", variant= "primary", size="small")
+                        book_name_result = gr.Textbox(label="Books Found", lines=5, show_label=True)
+                        #search_by_name_button.click(async_search_by_book_name, [book_name_search], book_name_result)
+                        # Use the sync wrapper
+                        search_by_name_button.click(
+                            fn = search_by_book_name_sync,
+                            inputs=[book_name_search],
+                            outputs=book_name_result
+                        )
 
 
 
@@ -320,13 +589,37 @@ async def run_gradio_app():
                         summary_search = gr.Textbox(label="Summary Keywords")
                         search_by_summary_button = gr.Button("Search by Summary", size="small")
                         summary_search_result = gr.Textbox(label="Search Results", lines=5)
-                        search_by_summary_button.click(async_search_by_summary, [summary_search], summary_search_result)
+                        #search_by_summary_button.click(async_search_by_summary, [summary_search], summary_search_result)
+                        # Use the sync wrapper
+                        search_by_summary_button.click(
+                            search_by_summary_sync,
+                            inputs=[summary_search],
+                            outputs=summary_search_result
+                        )
 
 
 
+    return app
 
+# Initialize the database and launch the app
+async def init_db():
+    try:
+        await index_books()
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+
+def main():
+    # Initialize the database in a new event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(init_db())
+    finally:
+        loop.close()
+
+    # Create and launch the Gradio app
+    app = create_gradio_app()
     app.launch()
 
-# Main entry point
 if __name__ == "__main__":
-    asyncio.run(run_gradio_app())
+    main()

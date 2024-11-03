@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from backend.database import engine, Base, SessionLocal, Book, Review
@@ -12,6 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import SessionLocal
 from backend.database import Base, engine
 import httpx
+from typing import List
+from backend.RAG import BookRAG
+import uuid
 
 app = FastAPI()
 
@@ -176,3 +179,59 @@ async def view_book(book_id: int, db: AsyncSession):
         raise HTTPException(status_code=404, detail="Book not found")
     return book
 
+########################################################################################################################
+# Rag starts here
+sessions = {}
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
+
+
+class ChatResponse(BaseModel):
+    response: str
+
+
+# Initialize RAG system
+rag_system = BookRAG()
+
+
+# @app.post("/chat", response_model=ChatResponse)
+# async def chat_endpoint(chat_request: ChatRequest):
+#     session_id = chat_request.session_id
+#     message = chat_request.message
+#
+#     # Ensure session exists or create a new one if not
+#     if session_id not in rag_system.sessions:
+#         rag_system.sessions[session_id] = {"context": []}
+#
+#     # Get response from RAG system using the session ID
+#     try:
+#          response, contexts = await rag_system.chat(session_id, message)
+#     except Exception as e:
+#          raise HTTPException(status_code=500, detail=str(e))
+#
+#          # Extract relevant books from the contexts
+#     relevant_books = [
+#         {
+#             "title": ctx["content"].split("\n")[0].replace("Title: ", ""),
+#             "author": ctx["content"].split("\n")[1].replace("Author: ", ""),
+#             "relevance": ctx["relevance_score"]
+#         }
+#         for ctx in contexts
+#     ]
+#
+#     return ChatResponse(
+#         response=response,
+#         relevant_books=relevant_books
+#     )
+
+@app.post("/chat")
+async def chat(self, query: str, session_id: str = None) -> ChatResponse:
+    if not session_id:
+        session_id = str(uuid.uuid4())  # Generate a new session if not provided
+
+    # Existing logic to retrieve context and generate response
+    contexts = await self.retrieve_relevant_context(query, session_id)
+    response_message = await self.generate_response(query, contexts)
+
+    return ChatResponse(message=response_message, session_id=session_id)
